@@ -1,0 +1,16 @@
+{{- /* PodDisruptionBudget to prevent degrading the availability through voluntary changes. */ -}}
+
+{{- if (and (ne (.Values.minAvailable | toString) "-") .Values.minAvailable) }}
+{{- $fullName := include "auth-proxy.fullname" . -}}
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "auth-proxy.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "auth-proxy.selectorLabels" . | nindent 6 }}
+{{- end }}

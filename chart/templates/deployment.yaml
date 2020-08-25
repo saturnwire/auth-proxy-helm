@@ -1,0 +1,80 @@
+{{- $fullName := include "auth-proxy.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "auth-proxy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "auth-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "auth-proxy.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (printf "%s/%s" $.Template.BasePath "secret.yaml") . | sha256sum | substr 0 63 }}
+    spec:
+      volumes:
+      - name: auth-proxy
+        secret:
+          secretName: {{ $fullName }}
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "auth-proxy.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          args:
+            {{ toYaml .Values.oauth.args | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+          volumeMounts:
+            - name: auth-proxy
+              mountPath: "/etc/oauth2_proxy/oauth2_proxy.cfg"
+              subPath: oauth2_proxy.cfg
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "auth-proxy.selectorLabels" . | nindent 18 }}
+              topologyKey: failure-domain.beta.kubernetes.io/zone
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "auth-proxy.selectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
